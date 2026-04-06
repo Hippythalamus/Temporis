@@ -9,6 +9,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # ---- Options ----
 option(BUILD_TESTS "Build tests" ON)
 
+find_package(nlohmann_json REQUIRED)
+
+
 # ---- Include dirs ----
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
@@ -17,6 +20,7 @@ add_library(temporis
     src/RegimeLatencyModel.cpp
     src/NetworkSimulator.cpp
     src/Random.cpp
+    src/ExperimentParams.cpp
 )
 
 target_include_directories(temporis
@@ -38,6 +42,7 @@ add_executable(consensus_demo
 )
 
 target_link_libraries(consensus_demo temporis)
+target_link_libraries(temporis PRIVATE nlohmann_json::nlohmann_json)
 
 # ---- Tests ----
 if(BUILD_TESTS)

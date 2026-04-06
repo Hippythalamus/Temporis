@@ -1,21 +1,33 @@
-#include <RegimeLatencyModel.hpp>
+#include "RegimeLatencyModel.hpp"
 #include <random>
+#include <fstream>
 #include <cmath>
 
 static std::mt19937 rng(42);
 
 
-RegimeLatencyModel::RegimeLatencyModel(Mode mode)
+RegimeLatencyModel::RegimeLatencyModel(Mode mode, const LatencyParams& p)
     : mode_(mode),
       regime_(Regime::NORMAL),
-      normal_mean_(2.0),
-      congested_mean_(30.0),
-      normal_std_(2.0),
-      congested_std_(20.0),
-      congestion_threshold_(100)
+
+      normal_mean_(p.normal_mean),
+      congested_mean_(p.congested_mean),
+
+      normal_std_(p.normal_std),
+      congested_std_(p.congested_std),
+
+      congestion_threshold_(p.congestion_threshold),
+
+      noise_std_(p.noise_std),
+      rho_(p.rho),
+
+      base_delay_(p.base_delay),
+      bandwidth_(p.bandwidth),
+      packet_size_(p.packet_size)
 {}
 
-double RegimeLatencyModel::sample(int sender, int receiver, double t, int load)
+
+double RegimeLatencyModel::sample(int sender, int receiver, double t, int load, int queue_size)
 {
     switch (mode_) {
 
@@ -26,7 +38,11 @@ double RegimeLatencyModel::sample(int sender, int receiver, double t, int load)
             std::normal_distribution<double> dist(normal_mean_, normal_std_);
             return std::max(0.0, dist(rng));
         }
-
+        case Mode::IID_EXPONENTIAL: {
+            double lambda = 1.0 / normal_mean_;
+            std::exponential_distribution<double> dist(lambda);
+            return dist(rng);
+        }
         case Mode::REGIME: {
             update_regime(load);
 
@@ -37,6 +53,33 @@ double RegimeLatencyModel::sample(int sender, int receiver, double t, int load)
 
             return std::max(0.0, dist(rng));
         }
+
+        case Mode::CORRELATED: {
+            auto key = std::make_pair(sender, receiver);
+
+            double prev = 0.0;
+            auto it = prev_latency_.find(key);
+            if(it != prev_latency_.end()){
+                prev = it->second;
+            }
+
+            std::normal_distribution<double> noise(0.0, noise_std_);
+
+            double mean = base_delay_ + (queue_size * packet_size_) / bandwidth_;
+
+            double latency = rho_ * prev
+                        + (1 - rho_) * mean
+                        + noise(rng);
+
+            latency = std::max(0.0, latency);
+
+            prev_latency_[key] = latency;
+
+            return latency;
+        }
+        default:
+            throw std::runtime_error("Unknown mode");
+            break;
     }
 
     return 0.0;

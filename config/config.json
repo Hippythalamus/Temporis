@@ -1,0 +1,23 @@
+{
+  "experiment": {
+    "N": 50,
+    "steps": 1000,
+    "alpha": 0.1,
+    "mode": "CORRELATED"
+  },
+  "latency": {
+    "regime": "NORMAL",
+    "normal_mean": 0.2,
+    "congested_mean": 3.0,
+    "normal_std": 0.2,
+    "congested_std": 2.0,
+    "congestion_threshold": 100,
+    "noise_std": 5.0,
+    "rho": 0.8,
+    "base_delay": 0.2,
+    "bandwidth": 50.0,
+    "packet_size": 1
+  }
+}
+
+      
