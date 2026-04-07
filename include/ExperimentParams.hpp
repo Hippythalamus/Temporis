@@ -11,6 +11,7 @@ public:
     int N;
     int steps;
     double alpha;
+    bool validation_check;
 
     RegimeLatencyModel::Mode mode;
     RegimeLatencyModel::Regime regime;
@@ -39,8 +40,18 @@ public:
     void log_network(int t, double mean_lat, double var_lat, int queue_size) {
         network_csv_ << t << "," << mean_lat << "," << var_lat << "," << queue_size << "\n";
     }
-    
 
+    void log_metric(const std::string& name, double value) {
+        metrics_csv_ << name << "," << value << "\n";
+    }
+
+    void log_latency(double t, int sender, int receiver, double delay) {
+        latency_csv_ << t << "," << sender << "," << receiver << "," << delay << "\n";
+    }
+
+    void flush_latency(){
+        latency_csv_.flush();
+    }
     std::string results_dir() const {
         return results_dir_;
     }
@@ -50,6 +61,8 @@ private:
 
     std::ofstream system_csv_;
     std::ofstream network_csv_;
+    std::ofstream metrics_csv_;
+    std::ofstream latency_csv_;
 
 
     void setup_results_dir() {
@@ -77,13 +90,17 @@ private:
     void open_files() {
         system_csv_.open(results_dir_ + "/system.csv");
         network_csv_.open(results_dir_ + "/network.csv");
+        metrics_csv_.open(results_dir_ + "/metrics.csv");
+        latency_csv_.open(results_dir_ + "/latency.csv");
 
-        if (!system_csv_ || !network_csv_) {
+        if (!system_csv_ || !network_csv_ || !metrics_csv_ || !latency_csv_) {
             throw std::runtime_error("Failed to open CSV files");
         }
 
         system_csv_ << "t,avg,var\n";
         network_csv_ << "t,mean_latency,var_latency,queue_size\n";
+        metrics_csv_ << "parameterName, value\n";
+        latency_csv_ << "t,sender,receiver,delay\n";
     }
 };
 

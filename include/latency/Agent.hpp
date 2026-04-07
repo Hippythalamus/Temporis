@@ -8,7 +8,13 @@ public:
     double state =0.0;
     double alpha ;
     double degree; //N-1
+    bool validation_check;
+    std::vector<double> latency_trace; //tunning
 
+    enum class WeightMode {
+        CONSTANT,
+        AGE_DECAY
+    };
 
     void step(const std::vector<Message>& inbox, double current_time) {
     double sum = 0.0;
@@ -16,12 +22,24 @@ public:
     double last_ts = 0.0;
     double last_value = 0.0;
     double last_state = 0.0;
+
+     WeightMode mode = validation_check ? WeightMode::CONSTANT : WeightMode::AGE_DECAY;
+
+        auto weight_fn = [mode](double age) {
+                switch (mode) {
+                    case WeightMode::CONSTANT:
+                        return 1.0;
+                    case WeightMode::AGE_DECAY:
+                        return 1.0 / (1.0 + age);
+                }
+                return 1.0;
+            };
     
 
         for (auto& m : inbox) {
 
             double age = current_time - m.timestamp;
-            double w = 1.0 / (1.0 + age);
+            double w = weight_fn(age);
 
             sum += w * (m.value - state);
 

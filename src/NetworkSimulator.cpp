@@ -6,7 +6,7 @@ NetworkSimulator::NetworkSimulator(LatencyModel* model, int num_agents)
     : model_(model), inboxes_(num_agents)
 {}
 
-int NetworkSimulator::send(Message msg, double current_time)
+double NetworkSimulator::send(Message& msg, double current_time)
 {
     int queue_size = std::min((int)buffer_.size(), 1000);
     int load = buffer_.size();
@@ -25,7 +25,7 @@ int NetworkSimulator::send(Message msg, double current_time)
     if(msg.delivery_time < current_time)  return -1;
 
     buffer_.push(msg);
-    return 0;
+    return delay;
 }
 
 void NetworkSimulator::tick(double current_time)

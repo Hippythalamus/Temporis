@@ -17,7 +17,7 @@ class NetworkSimulator {
 public:
     NetworkSimulator(LatencyModel* model, int num_agents);
 
-    int send(Message msg,  double current_time);
+    double send(Message& msg,  double current_time);
 
     void tick(double current_time);
 

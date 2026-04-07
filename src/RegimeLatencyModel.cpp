@@ -65,8 +65,8 @@ double RegimeLatencyModel::sample(int sender, int receiver, double t, int load, 
 
             std::normal_distribution<double> noise(0.0, noise_std_);
 
-            double mean = base_delay_ + (queue_size * packet_size_) / bandwidth_;
-
+          //  double mean = base_delay_ + (queue_size * packet_size_) / bandwidth_; // next step --- latency feedback destabilizes system
+            double mean = base_delay_;
             double latency = rho_ * prev
                         + (1 - rho_) * mean
                         + noise(rng);

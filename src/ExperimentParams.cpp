@@ -35,6 +35,8 @@ ExperimentConfig load_config(const std::string& path) {
 
     config.mode = parse_mode(je.value("mode", "NO_DELAY"));
 
+    config.validation_check = je.value("validation_check", false);
+
     // latency
     auto jl = j["latency"];
 
@@ -63,6 +65,7 @@ void print_config(const ExperimentConfig& config) {
     std::cout << "N: " << config.N << "\n";
     std::cout << "steps: " << config.steps << "\n";
     std::cout << "alpha: " << config.alpha << "\n";
+    std::cout << "validation_check: " << config.validation_check << "\n";
 
     std::cout << "mode: ";
     switch (config.mode) {
