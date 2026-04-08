@@ -17,11 +17,14 @@ class NetworkSimulator {
 public:
     NetworkSimulator(LatencyModel* model, int num_agents);
 
-    double send(Message& msg,  double current_time);
+    double send(Message& msg, double current_time);
 
     void tick(double current_time);
 
-    void get_latency_stats(double& mean, double& var);
+    // Returns the running mean/var of latencies sampled since the last call,
+    // and resets the accumulators. Not idempotent: calling twice gives zeros
+    // the second time.
+    void consume_latency_stats(double& mean, double& var);
 
     int queue_size() const {
         return std::min((int)buffer_.size(), 1000);

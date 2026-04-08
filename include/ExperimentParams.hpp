@@ -5,13 +5,16 @@
 #include <chrono>
 #include <fstream>
 #include <filesystem>
+#include <cstdint>
 
 struct ExperimentConfig {
 public:
     int N;
     int steps;
     double alpha;
+    double dt = 0.1;  // simulation time step in seconds
     bool validation_check;
+    uint64_t seed = 2;
 
     RegimeLatencyModel::Mode mode;
     RegimeLatencyModel::Regime regime;
@@ -103,4 +106,3 @@ private:
         latency_csv_ << "t,sender,receiver,delay\n";
     }
 };
-

@@ -12,17 +12,20 @@ double NetworkSimulator::send(Message& msg, double current_time)
     int load = buffer_.size();
 
     double delay = model_->sample(msg.sender, msg.receiver, current_time, load, queue_size);
-    //double delay = model_->sample(msg.sender, msg.receiver, current_time, load);
 
     msg.timestamp = current_time;
     msg.delivery_time = current_time + delay;
 
+    // All current LatencyModel implementations clamp at 0, so this should
+    // never trigger -- but keep it as a defensive guard for future models.
+    // Important: do this BEFORE updating stats, otherwise -1 pollutes them.
+    if (msg.delivery_time < current_time) {
+        return -1;
+    }
 
     latency_sum_ += delay;
     latency_sq_sum_ += delay * delay;
     latency_count_++;
-
-    if(msg.delivery_time < current_time)  return -1;
 
     buffer_.push(msg);
     return delay;
@@ -57,7 +60,7 @@ std::vector<Message> NetworkSimulator::receive(int agent_id)
     return out;
 }
 
-void NetworkSimulator::get_latency_stats(double& mean, double& var) {
+void NetworkSimulator::consume_latency_stats(double& mean, double& var) {
     if (latency_count_ == 0) {
         mean = 0;
         var = 0;

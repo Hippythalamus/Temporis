@@ -1,24 +1,30 @@
 {
   "experiment": {
     "N": 50,
-    "steps": 1000,
+    "steps": 6387,
     "alpha": 0.1,
+    "dt": 1.0,
     "mode": "CORRELATED",
-    "validation_check": false
+    "validation_check": false,
+    "seed": 7
   },
   "latency": {
-    "regime": "NORMAL",
-    "normal_mean": 0.2,
-    "congested_mean": 0.3,
-    "normal_std": 0.05,
-    "congested_std": 0.01,
+    "normal_mean": 0.094946,
+    "congested_mean": 0.352974,
+    "normal_std": 0.03,
+    "congested_std": 0.08,
     "congestion_threshold": 500,
-    "noise_std": 0.05,
-    "rho": 0.8,
-    "base_delay": 0.2,
+
+    "base_delay": 0.128553,
+    "rho": 0.809687,
+    "innovation_std": 0.404215,
+
+    "normal_innovation_std": 0.107920,
+    "congested_innovation_std": 0.174151,
+    "p_normal_to_congested": 0.004016,
+    "p_congested_to_normal": 0.025374,
+
     "bandwidth": 1000.0,
     "packet_size": 1
   }
 }
-
-      
