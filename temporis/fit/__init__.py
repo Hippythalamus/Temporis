@@ -9,10 +9,8 @@ No CLI, no plotting, no I/O. Pure functions on numpy arrays.
 """
 
 import numpy as np
-import sys
 
 
-sys.path.insert(0, '.')
 # =========================
 # STATISTICAL HELPERS
 # =========================
@@ -190,4 +188,27 @@ def simulate_regime(N, rho, normal_mean, congested_mean,
         new_log = lm + rho * (log_state - lm) + rng.normal(0, inn_std)
         log_state = new_log
         trace[i] = np.exp(new_log)
+    return trace
+
+
+def simulate_correlated(N, base_delay, rho, innovation_std, seed):
+    """Simulate CORRELATED (single-regime log-normal AR(1)).
+
+    Same math as the C++ CORRELATED model:
+      log_mean is compensated so that E[exp(y)] == base_delay
+      log_state is initialized from the stationary distribution
+
+    Returns a numpy array of length N, or None if rho is degenerate.
+    """
+    rng = np.random.default_rng(seed)
+    denom = 1.0 - rho * rho
+    if denom <= 1e-12:
+        return None
+    stat_log_std = innovation_std / np.sqrt(denom)
+    log_mean = np.log(base_delay) - 0.5 * stat_log_std * stat_log_std
+    log_state = rng.normal(log_mean, stat_log_std)
+    trace = np.empty(N)
+    for i in range(N):
+        log_state = log_mean + rho * (log_state - log_mean) + rng.normal(0, innovation_std)
+        trace[i] = np.exp(log_state)
     return trace
