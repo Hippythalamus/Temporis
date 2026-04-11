@@ -25,67 +25,7 @@ import sys
 
 import numpy as np
 
-
-def simulate(N, rho, normal_mean, congested_mean,
-             normal_innovation_std, congested_innovation_std,
-             p_nc, p_cn, seed):
-    """Simulate REGIME_CORRELATED using the exact same math as the C++ model."""
-    rng = np.random.default_rng(seed)
-    denom = 1.0 - rho * rho
-    if denom <= 1e-12:
-        return None
-
-    def log_mean_for(regime, inn_std):
-        stat_std = inn_std / np.sqrt(denom)
-        m = normal_mean if regime == 0 else congested_mean
-        return np.log(m) - 0.5 * stat_std * stat_std
-
-    stat_std_n = normal_innovation_std / np.sqrt(denom)
-    log_state = rng.normal(log_mean_for(0, normal_innovation_std), stat_std_n)
-    regime = 0
-
-    trace = np.empty(N)
-    for i in range(N):
-        if regime == 0:
-            if rng.uniform() < p_nc:
-                regime = 1
-        else:
-            if rng.uniform() < p_cn:
-                regime = 0
-        inn_std = normal_innovation_std if regime == 0 else congested_innovation_std
-        lm = log_mean_for(regime, inn_std)
-        new_log = lm + rho * (log_state - lm) + rng.normal(0, inn_std)
-        log_state = new_log
-        trace[i] = np.exp(new_log)
-    return trace
-
-
-def compute_bursts(x, threshold):
-    bursts = []
-    current = 0
-    for v in x:
-        if v > threshold:
-            current += 1
-        else:
-            if current > 0:
-                bursts.append(current)
-                current = 0
-    if current > 0:
-        bursts.append(current)
-    return bursts
-
-
-def stats_of(trace):
-    p95 = float(np.percentile(trace, 95))
-    bursts = compute_bursts(trace, p95)
-    return {
-        "mean": float(np.mean(trace)),
-        "std": float(np.std(trace, ddof=1)),
-        "p95": p95,
-        "p99": float(np.percentile(trace, 99)),
-        "burst_mean_len": float(np.mean(bursts)) if bursts else 0.0,
-        "burst_max_len": int(max(bursts)) if bursts else 0,
-    }
+from temporis.fit import simulate_regime, stats_of
 
 
 def score(observed, target, weights):
@@ -168,7 +108,7 @@ def main():
 
     for trial in range(args.trials):
         cfg = random_config(rng)
-        trace = simulate(N=args.n_samples, seed=trial + 1, **cfg)
+        trace = simulate_regime(N=args.n_samples, seed=trial + 1, **cfg)
         if trace is None:
             continue
         obs = stats_of(trace)

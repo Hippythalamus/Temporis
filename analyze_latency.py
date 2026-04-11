@@ -17,122 +17,22 @@ Usage:
 import argparse
 import json
 import os
+import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
 
-# =========================
-# UTILS
-# =========================
+from temporis.fit import (
+    compute_acf,
+    compute_bursts,
+    robust_stats,
+    fit_ar1_linear,
+    fit_ar1_log,
+)
 
-def compute_acf(x, max_lag=50):
-    """Biased ACF estimator -- matches numpy/statsmodels with adjusted=False.
-    Same formula as the C++ side, so values should be directly comparable."""
-    x = np.asarray(x, dtype=float)
-    x = x - np.mean(x)
-    n = len(x)
-    var = np.var(x)
-    if var < 1e-12 or n < 2:
-        return np.zeros(max_lag + 1)
-
-    out = np.empty(max_lag + 1)
-    out[0] = 1.0
-    for lag in range(1, max_lag + 1):
-        if lag >= n:
-            out[lag] = 0.0
-            continue
-        out[lag] = np.sum(x[lag:] * x[:-lag]) / (n * var)
-    return out
-
-
-def compute_bursts(x, threshold):
-    """Run-length of consecutive samples strictly above threshold."""
-    bursts = []
-    current = 0
-    for v in x:
-        if v > threshold:
-            current += 1
-        else:
-            if current > 0:
-                bursts.append(current)
-                current = 0
-    if current > 0:
-        bursts.append(current)
-    return bursts
-
-
-def robust_stats(x):
-    """Mean/std plus median/IQR/p95/p99 -- robust to heavy tails."""
-    x = np.asarray(x, dtype=float)
-    return {
-        "n": int(len(x)),
-        "mean": float(np.mean(x)),
-        "std": float(np.std(x, ddof=1)) if len(x) > 1 else 0.0,
-        "median": float(np.median(x)),
-        "iqr": float(np.percentile(x, 75) - np.percentile(x, 25)),
-        "p95": float(np.percentile(x, 95)),
-        "p99": float(np.percentile(x, 99)),
-        "min": float(np.min(x)),
-        "max": float(np.max(x)),
-    }
-
-
-def fit_ar1_linear(x):
-    """Fit AR(1) directly on x: x_t = mu + rho * (x_{t-1} - mu) + eps_t.
-
-    For NAIVE_CORRELATED mode in Temporis. Will be biased on real latency
-    data because real latencies are non-negative and the gaussian AR(1)
-    can't represent that without clamping.
-    """
-    x = np.asarray(x, dtype=float)
-    if len(x) < 2:
-        return None
-    mu = float(np.mean(x))
-    sigma = float(np.std(x, ddof=1))
-    rho = float(np.corrcoef(x[:-1], x[1:])[0, 1])
-    rho = max(-0.999, min(0.999, rho))
-    sigma_eps = float(sigma * np.sqrt(1.0 - rho ** 2))
-    return {
-        "mu": mu,
-        "sigma": sigma,
-        "rho": rho,
-        "sigma_eps": sigma_eps,
-        "n": int(len(x)),
-    }
-
-
-def fit_ar1_log(x):
-    """Fit AR(1) on log(x): log(x_t) = m + rho * (log(x_{t-1}) - m) + eps_t.
-
-    For CORRELATED (log-normal) mode in Temporis. This is the preferred
-    fit because the C++ model works in log-space internally and calibrates
-    base_delay so that E[exp(y)] == base_delay in stationarity.
-    """
-    x = np.asarray(x, dtype=float)
-    x = x[x > 0]  # log undefined for non-positive
-    if len(x) < 2:
-        return None
-
-    log_x = np.log(x)
-    log_mu = float(np.mean(log_x))
-    log_sigma = float(np.std(log_x, ddof=1))
-    rho = float(np.corrcoef(log_x[:-1], log_x[1:])[0, 1])
-    rho = max(-0.999, min(0.999, rho))
-    innovation_std = float(log_sigma * np.sqrt(1.0 - rho ** 2))
-    # Recover base_delay so that E[exp(y)] == base_delay
-    base_delay = float(np.exp(log_mu + 0.5 * log_sigma ** 2))
-    return {
-        "base_delay": base_delay,
-        "rho": rho,
-        "innovation_std": innovation_std,
-        "log_mu": log_mu,
-        "log_sigma": log_sigma,
-        "n": int(len(x)),
-    }
-
-
+sys.path.insert(0, '.')
 # =========================
 # POPULATION ANALYSIS (all links)
 # =========================
