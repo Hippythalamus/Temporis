@@ -85,6 +85,16 @@ make
 
 ---
 
+## Tests
+
+```bash
+# With pytest
+python3 -m pytest tests/test_fit.py -v
+
+# Without pytest
+python3 tests/test_fit.py
+```
+
 ## Quick start (Path A: simulate and analyse)
 
 The fastest way to see Temporis in action is to run the bundled `consensus_demo` with the default config, then analyse what it produced. No external data required.
