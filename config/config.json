@@ -4,25 +4,26 @@
     "steps": 6387,
     "alpha": 0.1,
     "dt": 1.0,
-    "mode": "CORRELATED",
+    "mode": "REGIME_CORRELATED",
     "validation_check": false,
     "seed": 7
   },
+
   "latency": {
+    "rho": 0.913277,
     "normal_mean": 0.094946,
     "congested_mean": 0.352974,
+    "normal_innovation_std": 0.107920,
+    "congested_innovation_std": 0.174151,
+    "p_normal_to_congested": 0.004016,
+    "p_congested_to_normal": 0.025374,
+
     "normal_std": 0.03,
     "congested_std": 0.08,
     "congestion_threshold": 500,
 
     "base_delay": 0.128553,
-    "rho": 0.809687,
     "innovation_std": 0.404215,
-
-    "normal_innovation_std": 0.107920,
-    "congested_innovation_std": 0.174151,
-    "p_normal_to_congested": 0.004016,
-    "p_congested_to_normal": 0.025374,
 
     "bandwidth": 1000.0,
     "packet_size": 1

@@ -68,6 +68,15 @@ These models are validated via:
 
 ---
 
+## Dependencies
+
+Python tools require:
+
+- numpy
+- pandas
+- matplotlib
+- optuna
+
 ## Example: why structure matters
 
 Temporis is built around the idea that two latency processes can have the **same average** but very different temporal structure — different burst statistics, different long-range correlation, different ACF decay. Whether this translates into measurable differences in distributed-system behavior depends on the specific algorithm and topology. The validation methodology in this repo is designed to make those differences visible and reproducible; demonstrating their downstream impact on consensus, formation control, and similar algorithms is the subject of ongoing work.
@@ -212,11 +221,11 @@ Temporis is designed for studying:
 - Regime-switching latency (burst modeling)
 - Basic multi-agent consensus simulation
 - Quality report tool with explicit verdicts
+- Improved regime calibration (matching burst length distributions, fixing long-range ACF overshoot)
 
 ### In progress
 
 - Parameter fitting from real datasets (automated pipeline)
-- Improved regime calibration (matching burst length distributions, fixing long-range ACF overshoot)
 
 ### Planned
 
