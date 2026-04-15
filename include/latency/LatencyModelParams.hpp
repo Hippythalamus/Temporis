@@ -41,4 +41,5 @@ public:
     // ===== Legacy / unused by the new modes =====
     double bandwidth;
     double packet_size;
+    double propagation_delay = 0.0;  // for QUEUE model only
 };

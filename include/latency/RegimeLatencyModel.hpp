@@ -15,7 +15,8 @@ public:
         REGIME,              // legacy: gaussian with global regime switching
         NAIVE_CORRELATED,    // gaussian AR(1) with max(0, .) clamping
         CORRELATED,          // log-normal AR(1), single regime -- validated baseline
-        REGIME_CORRELATED    // Markov-switching log-normal AR(1), per-link state
+        REGIME_CORRELATED,    // Markov-switching log-normal AR(1), per-link state
+        QUEUE,
     };
 
     RegimeLatencyModel(Mode mode, const LatencyParams& latency, uint64_t seed = 2);

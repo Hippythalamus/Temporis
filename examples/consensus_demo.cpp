@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <RegimeLatencyModel.hpp>
+#include <QueueLatencyModel.hpp>
 #include <NetworkSimulator.hpp>
 #include <ExperimentParams.hpp>
 #include <Agent.hpp>
@@ -8,6 +9,7 @@
 #include <cmath>
 #include <chrono>
 #include <iostream>
+#include <memory>
 
 // ---- helpers ----
 
@@ -52,6 +54,26 @@ static std::vector<int> compute_bursts(const std::vector<double>& trace, double 
     return bursts;
 }
 
+// ---- factory ----
+
+// Construct the appropriate LatencyModel for the given experiment config.
+// Returns a unique_ptr to allow polymorphic ownership without manual
+// delete and without stack-allocating an unused alternative.
+static std::unique_ptr<LatencyModel>
+make_latency_model(const ExperimentConfig& config) {
+    if (config.mode == RegimeLatencyModel::Mode::QUEUE) {
+        QueueLatencyModel::Config qc{
+            config.latency.bandwidth,
+            config.latency.propagation_delay,
+            config.latency.packet_size,
+            config.N
+        };
+        return std::make_unique<QueueLatencyModel>(qc);
+    }
+    return std::make_unique<RegimeLatencyModel>(
+        config.mode, config.latency, config.seed);
+}
+
 // ---- main ----
 
 int main(int argc, char** argv) {
@@ -69,8 +91,8 @@ int main(int argc, char** argv) {
 
     print_config(config);
 
-    RegimeLatencyModel latency_model(config.mode, config.latency, config.seed);
-    NetworkSimulator net(&latency_model, config.N);
+    auto latency_model = make_latency_model(config);
+    NetworkSimulator net(latency_model.get(), config.N);
     std::vector<Agent> agents(config.N);
     std::map<std::pair<int, int>, std::vector<double>> latency_traces;
     std::vector<double> global_latency_trace;
@@ -160,8 +182,12 @@ int main(int argc, char** argv) {
         }
     }
 
+    // Per-link ACF post-analysis: meaningful for any model with temporal
+    // structure (CORRELATED, NAIVE_CORRELATED, REGIME_CORRELATED, QUEUE).
     if (config.mode == RegimeLatencyModel::Mode::CORRELATED ||
-        config.mode == RegimeLatencyModel::Mode::NAIVE_CORRELATED) {
+        config.mode == RegimeLatencyModel::Mode::NAIVE_CORRELATED ||
+        config.mode == RegimeLatencyModel::Mode::REGIME_CORRELATED ||
+        config.mode == RegimeLatencyModel::Mode::QUEUE) {
         double total_acf = 0.0;
         int count = 0;
         for (auto& [key, trace] : latency_traces) {

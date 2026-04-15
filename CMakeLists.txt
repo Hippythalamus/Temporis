@@ -18,6 +18,7 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 # ---- Library ----
 add_library(temporis
     src/RegimeLatencyModel.cpp
+    src/QueueLatencyModel.cpp
     src/NetworkSimulator.cpp
     src/Random.cpp
     src/ExperimentParams.cpp

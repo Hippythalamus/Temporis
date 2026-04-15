@@ -98,6 +98,24 @@ def compare_acf(target_trace, sim_traces, lags=(1, 5, 10, 30)):
                     "abs_diff": abs(med - t)}
     return out, target_acf, sim_acfs
 
+def simulate_queue(arrival_times, bandwidth, packet_size, propagation_delay):
+    """
+    Deterministic M/D/1 queue simulation (sender-side, Step 1 model).
+    Matches C++ QueueLatencyModel exactly (no noise, no randomness).
+    """
+    service_time = packet_size / bandwidth
+
+    t_complete = 0.0
+    delays = []
+
+    for t_arr in arrival_times:
+        t_start = max(t_arr, t_complete)
+        t_complete = t_start + service_time
+        delay = (t_complete - t_arr) + propagation_delay
+        delays.append(delay)
+
+    return np.array(delays)
+
 
 # =========================
 # ROUND-TRIP (only for CORRELATED -- the only mode where we have a clean
@@ -135,6 +153,9 @@ def build_verdict(report, mode, n_samples_target):
     rho = fit.get("rho", 0.0)
     if rho > 0.97:
         v.append(("warn", f"Fitted rho={rho:.4f} is near unit root; AR(1) may be unstable."))
+    
+    if mode == "queue":
+        v.append(("ok", "Queue model evaluated on fixed arrival trace (deterministic)."))
 
     if mode == "correlated":
         rt = report["roundtrip"]
@@ -352,7 +373,7 @@ def make_plots(report, target_trace, sim_traces, target_acf, sim_acfs,
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("fit_json", help="path to fit.json from analyze_latency.py")
-    p.add_argument("--mode", choices=["correlated", "regime"], required=True)
+    p.add_argument("--mode", choices=["correlated", "regime", "queue"], required=True)
     p.add_argument("--output", default="report.md")
     p.add_argument("--seeds", default="2,3,4,6,7")
     p.add_argument("--n-samples", type=int, default=None,
@@ -364,6 +385,8 @@ def main():
     p.add_argument("--show-seeds", action="store_true",
                    help="overlay individual seeds as thin lines on CDF and ACF "
                         "plots in addition to the median+envelope summary")
+    p.add_argument("--arrival-csv", default=None,
+               help="CSV with arrival trace (required for --mode queue)")
     args = p.parse_args()
 
     with open(args.fit_json) as f:
@@ -383,19 +406,25 @@ def main():
     df = df[df["delay"] > 0]
     target_trace = df["delay"].values
 
-    # Build simulate function for chosen mode
+   # Build simulate function for chosen mode
     if args.mode == "correlated":
         fit_p = link["ar1_fit_log"]
-        params = {"base_delay": fit_p["base_delay"], "rho": fit_p["rho"],
-                  "innovation_std": fit_p["innovation_std"]}
+        params = {
+            "base_delay": fit_p["base_delay"],
+            "rho": fit_p["rho"],
+            "innovation_std": fit_p["innovation_std"]
+        }
         sim_fn = lambda N, seed: simulate_correlated(N=N, seed=seed, **params)
-    else:
+
+    elif args.mode == "regime":
         if not args.regime_config:
             raise SystemExit("--regime-config required for --mode regime")
+
         with open(args.regime_config) as f:
             rc = json.load(f)
         if "latency" in rc:
             rc = rc["latency"]
+
         params = {
             "rho": rc["rho"],
             "normal_mean": rc["normal_mean"],
@@ -405,10 +434,51 @@ def main():
             "p_nc": rc.get("p_normal_to_congested", rc.get("p_nc")),
             "p_cn": rc.get("p_congested_to_normal", rc.get("p_cn")),
         }
+
         sim_fn = lambda N, seed: simulate_regime(N=N, seed=seed, **params)
 
-    print(f"Running {len(seeds)} seeds, n_samples={n_samples}...")
-    sim_traces = run_seeds(sim_fn, n_samples, seeds)
+    elif args.mode == "queue":
+        if not args.arrival_csv:
+            raise SystemExit("--arrival-csv required for --mode queue")
+
+        import pandas as pd
+
+        df_arr = pd.read_csv(args.arrival_csv)
+        link_pair = tuple(link["link"])
+
+        df_arr = df_arr[
+            (df_arr["sender"] == link_pair[0]) &
+            (df_arr["receiver"] == link_pair[1])
+        ]
+
+        arrival_times = df_arr["t"].values
+
+        if args.regime_config:
+            with open(args.regime_config) as f:
+                rc = json.load(f)
+            if "latency" in rc:
+                rc = rc["latency"]
+        else:
+            raise SystemExit("--regime-config required for --mode queue (for bandwidth params)")
+
+        params = {
+
+            "bandwidth": rc.get("bandwidth_mean", rc.get("bandwidth")),
+            "packet_size": rc["packet_size"],
+            "propagation_delay": rc["propagation_delay"],
+        }
+
+        sim_fn = lambda N, seed: simulate_queue(
+            arrival_times=arrival_times,
+            **params
+        )
+
+    if args.mode == "queue":
+        print("Running queue simulation (deterministic, 1 trace)...")
+        sim_traces = [sim_fn(None, None)]
+    else:
+        print(f"Running {len(seeds)} seeds, n_samples={n_samples}...")
+        sim_traces = run_seeds(sim_fn, n_samples, seeds)
 
     threshold = float(np.percentile(target_trace, 95))
     if "threshold" not in target_burst:

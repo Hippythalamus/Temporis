@@ -15,6 +15,7 @@ RegimeLatencyModel::Mode parse_mode(const std::string& s) {
     if (s == "NAIVE_CORRELATED") return RegimeLatencyModel::Mode::NAIVE_CORRELATED;
     if (s == "CORRELATED") return RegimeLatencyModel::Mode::CORRELATED;
     if (s == "REGIME_CORRELATED") return RegimeLatencyModel::Mode::REGIME_CORRELATED;
+    if (s == "QUEUE") return RegimeLatencyModel::Mode::QUEUE;
 
     throw std::runtime_error("Unknown mode: " + s);
 }
@@ -69,6 +70,8 @@ ExperimentConfig load_config(const std::string& path) {
     config.latency.p_normal_to_congested = jl.value("p_normal_to_congested", 0.001);
     config.latency.p_congested_to_normal = jl.value("p_congested_to_normal", 0.05);
 
+
+    config.latency.propagation_delay = jl.value("propagation_delay", 0.0);
     return config;
 }
 
@@ -91,6 +94,7 @@ void print_config(const ExperimentConfig& config) {
         case RegimeLatencyModel::Mode::NAIVE_CORRELATED: std::cout << "NAIVE_CORRELATED\n"; break;
         case RegimeLatencyModel::Mode::CORRELATED: std::cout << "CORRELATED\n"; break;
         case RegimeLatencyModel::Mode::REGIME_CORRELATED: std::cout << "REGIME_CORRELATED\n"; break;
+        case RegimeLatencyModel::Mode::QUEUE: std::cout << "QUEUE\n"; break;
     }
 
     std::cout << "--- Latency params ---\n";
@@ -112,6 +116,7 @@ void print_config(const ExperimentConfig& config) {
     std::cout << "congested_innovation_std: " << config.latency.congested_innovation_std << "\n";
     std::cout << "p_normal_to_congested: " << config.latency.p_normal_to_congested << "\n";
     std::cout << "p_congested_to_normal: " << config.latency.p_congested_to_normal << "\n";
+    std::cout << "propagation_delay: " << config.latency.propagation_delay << "\n";
 
     std::cout << "result path: " << config.results_dir << "\n";
     std::cout << "========================\n";

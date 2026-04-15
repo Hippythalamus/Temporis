@@ -1,0 +1,16 @@
+{
+  "experiment": {
+    "N": 50,
+    "steps": 6387,
+    "alpha": 0.1,
+    "dt": 1.0,
+    "mode": "QUEUE",
+    "validation_check": false,
+    "seed": 7
+  },
+  "latency": {
+    "bandwidth": 10000.0,
+    "propagation_delay": 0.05,
+    "packet_size": 1.0
+  }
+}
