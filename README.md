@@ -226,10 +226,10 @@ Temporis is designed for studying:
 ### In progress
 
 - Parameter fitting from real datasets (automated pipeline)
+- Queue-based congestion model (load → latency dynamics)
 
 ### Planned
 
-- Queue-based congestion model (load → latency dynamics)
 - ROS2 integration
 - Zenoh backend support
 - Phase transition detection tools
