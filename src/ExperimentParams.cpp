@@ -70,7 +70,8 @@ ExperimentConfig load_config(const std::string& path) {
     config.latency.p_normal_to_congested = jl.value("p_normal_to_congested", 0.001);
     config.latency.p_congested_to_normal = jl.value("p_congested_to_normal", 0.05);
 
-
+    config.latency.bandwidth_logstd = jl.value("bandwidth_logstd", 0.0);
+    config.latency.bandwidth_rho = jl.value("bandwidth_rho", 0.0);
     config.latency.propagation_delay = jl.value("propagation_delay", 0.0);
     return config;
 }

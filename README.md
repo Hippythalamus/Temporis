@@ -51,20 +51,44 @@ Temporis lets you test:
 - Regime-switching latency (**REGIME / REGIME_CORRELATED**)
   - models congestion as a persistent state
   - produces realistic burst structure
+- Queue-based congestion (**QUEUE**)
+  - shared sender-side queue with bandwidth AR(1) noise
+  - latency arises from message competition for a finite channel
+  - creates a feedback loop: more agents → longer queues → higher latency
+  - validated against batch-arrival analytical formula (0.00% error)
 
-These models are validated via:
-- round-trip parameter recovery
-- distribution matching (mean, std, p95, p99)
-- temporal metrics (ACF, burst statistics)
+### Validation and calibration
+
+- Round-trip parameter recovery pipeline
+- Distribution matching (mean, std, p95, p99)
+- Temporal metrics (ACF, burst statistics)
+- Bayesian optimization for regime calibration (optuna)
+- Automated quality reports with explicit verdicts
 
 ---
 
 ## Architecture
 
-- `LatencyModel` — stochastic latency process
+- `LatencyModel` — abstract base for all latency processes
+- `RegimeLatencyModel` — IID, AR(1), and regime-switching implementations
+- `QueueLatencyModel` — mechanistic queue-based implementation
 - `NetworkSimulator` — delayed message delivery
-- `Agents` — distributed algorithms
-- `Experiment` — execution + metrics
+- `Agent` — distributed consensus algorithm
+- `ExperimentLogger` — CSV output for system, network, and latency traces
+
+---
+
+## Key result: queue feedback loop
+
+With identical channel parameters (bandwidth=70, noise σ=0.3, ρ=0.8) and algorithm (alpha=0.1, all-to-all consensus):
+
+| Agents | Queue load (ρ) | Mean latency | Convergence step |
+|--------|---------------|-------------|-----------------|
+| 10     | 0.13          | 0.13 sec    | 160             |
+| 50     | 0.70          | 0.60 sec    | 182             |
+| 70     | 0.99          | 112 sec     | 836             |
+
+Adding 20 agents (50 → 70) slowed convergence **5x** — not because the algorithm degraded, but because the network saturated. This effect is invisible in latency models where delay is independent of load.
 
 ---
 
@@ -76,12 +100,6 @@ Python tools require:
 - pandas
 - matplotlib
 - optuna
-
-## Example: why structure matters
-
-Temporis is built around the idea that two latency processes can have the **same average** but very different temporal structure — different burst statistics, different long-range correlation, different ACF decay. Whether this translates into measurable differences in distributed-system behavior depends on the specific algorithm and topology. The validation methodology in this repo is designed to make those differences visible and reproducible; demonstrating their downstream impact on consensus, formation control, and similar algorithms is the subject of ongoing work.
-
----
 
 ## Build
 
@@ -137,7 +155,14 @@ python3 temporis_report.py out_run/fit.json --mode regime \
     --regime-config config/config.json --output out_run/report_regime.md
 ```
 
-The report includes round-trip parameter recovery (CORRELATED only), marginal/burst/ACF comparison against the source trace, and an explicit verdict section that flags issues like ACF mismatch, sampling-variance warnings, or near-unit-root `rho`.
+For a queue-based run, use `--mode queue`:
+
+```bash
+python3 temporis_report.py out_run/fit.json --mode queue \
+    --regime-config config/config_queue.json --output out_run/report_queue.md
+```
+
+The report includes round-trip parameter recovery (CORRELATED only), marginal/burst/ACF comparison (REGIME), batch-arrival analytical check (QUEUE), and an explicit verdict section.
 
 ---
 
@@ -161,13 +186,20 @@ python3 analyze_latency.py results/seattle/data_real.csv out_seattle/
 
 The output `out_seattle/fit.json` contains the per-link AR(1) fit under `per_link.ar1_fit_log` — specifically `base_delay`, `rho`, and `innovation_std`. Copy these three numbers into the `latency` block of `config/config.json` to use them in a CORRELATED simulation.
 
-**3. (Optional) Search for regime-switching parameters.** A single-regime AR(1) cannot reproduce long burst episodes seen in real traces. To fit a Markov-switching variant, run a grid search against the target statistics:
+**3. (Optional) Search for regime-switching parameters.** A single-regime AR(1) cannot reproduce long burst episodes seen in real traces. To fit a Markov-switching variant, run a Bayesian optimization search:
+
+```bash
+python3 fit_regime_bayesian.py out_seattle/fit.json \
+    --target-csv results/seattle/data_real.csv \
+    --trials 500 --loss v2 \
+    --save-config out_seattle/best_regime.json
+```
+
+Or a simpler grid search:
 
 ```bash
 python3 fit_regime_correlated.py out_seattle/fit.json
 ```
-
-This prints the best regime configuration as a JSON block. Copy it into the `latency` block of `config/config.json` and switch the experiment mode to `REGIME_CORRELATED`.
 
 **4. Run Temporis with the calibrated parameters.**
 
@@ -175,7 +207,7 @@ This prints the best regime configuration as a JSON block. Copy it into the `lat
 ./build/consensus_demo config/config.json
 ```
 
-**5. Validate the simulator against the real source.** This is the key honesty step — run the report with the **real** `fit.json` as the target, but the **calibrated** config as the regime model. The report compares simulated traces (drawn fresh from the model) against the real Seattle trace:
+**5. Validate the simulator against the real source.**
 
 ```bash
 python3 temporis_report.py out_seattle/fit.json --mode regime \
@@ -188,16 +220,15 @@ The verdict section will tell you whether the calibration succeeded — and cruc
 
 ## Pipeline tools
 
-The Python side of Temporis is three small CLI tools that share a common library (`temporis/fit/`):
-
 | Tool | Input | Output | Purpose |
 |---|---|---|---|
-| `parse_seattle.py` | raw Seattle dataset directory | canonical CSV (`t, sender, receiver, delay`) | Convert public Seattle RTT data to the format Temporis expects. Replaceable per-dataset. |
-| `analyze_latency.py` | latency CSV (real or simulated) | `fit.json` + diagnostic plots | Compute population and per-link statistics, fit linear and log-normal AR(1), measure ACF and bursts. |
-| `fit_regime_correlated.py` | target `fit.json` | best regime config (printed) | Random search over Markov-switching log-AR(1) parameters to match target marginal and burst statistics. |
-| `temporis_report.py` | `fit.json` + mode (+ regime config) | `report.md` + 3 plots | Round-trip validation, marginal/burst/ACF comparison against target, explicit verdict with warnings. |
+| `parse_seattle.py` | raw Seattle dataset directory | canonical CSV | Convert public Seattle RTT data to Temporis format |
+| `analyze_latency.py` | latency CSV (real or simulated) | `fit.json` + plots | Population/per-link statistics, AR(1) fit, ACF, bursts |
+| `fit_regime_correlated.py` | target `fit.json` | regime config (printed) | Grid search for Markov-switching parameters |
+| `fit_regime_bayesian.py` | target `fit.json` + CSV | regime config (saved) | Bayesian optimization with configurable loss (v1/v2/v3) |
+| `temporis_report.py` | `fit.json` + mode + config | `report.md` + plots | Quality report with analytical checks and verdicts |
 
-All four scripts have `--help`. None of them depend on running C++ — they operate on CSVs and JSON, so you can use them on any latency dataset that follows the canonical four-column format.
+All scripts have `--help`. None depend on running C++ — they operate on CSVs and JSON.
 
 ---
 
@@ -208,6 +239,7 @@ Temporis is designed for studying:
 - latency-induced instability in multi-agent systems
 - interaction between communication and control
 - robustness of consensus under realistic delays
+- scaling effects: how adding agents changes network dynamics
 
 ---
 
@@ -221,20 +253,18 @@ Temporis is designed for studying:
 - Regime-switching latency (burst modeling)
 - Basic multi-agent consensus simulation
 - Quality report tool with explicit verdicts
-- Improved regime calibration (matching burst length distributions, fixing long-range ACF overshoot)
-
-### In progress
-
-- Parameter fitting from real datasets (automated pipeline)
-- Queue-based congestion model (load → latency dynamics)
+- Bayesian regime calibration with Pareto frontier analysis
+- Queue-based congestion model with bandwidth AR(1) noise
+- Queue feedback loop experiment (N=10/50/70 convergence comparison)
 
 ### Planned
 
 - ROS2 integration
-- Zenoh backend support
+- Zenoh backend support:
   - Adapt queue model to Zenoh-specific topology (peer / client+router / mesh)
   - Validate against real Zenoh latency measurements
 - Phase transition detection tools
+- Hybrid models (queue + regime-switching)
 
 ---
 

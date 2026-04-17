@@ -66,7 +66,10 @@ make_latency_model(const ExperimentConfig& config) {
             config.latency.bandwidth,
             config.latency.propagation_delay,
             config.latency.packet_size,
-            config.N
+            config.N, 
+            config.latency.bandwidth_logstd,   
+            config.latency.bandwidth_rho,       
+            config.seed      
         };
         return std::make_unique<QueueLatencyModel>(qc);
     }

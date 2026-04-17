@@ -42,4 +42,6 @@ public:
     double bandwidth;
     double packet_size;
     double propagation_delay = 0.0;  // for QUEUE model only
+    double bandwidth_logstd = 0.0;
+    double bandwidth_rho = 0.0;
 };

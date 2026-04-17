@@ -1,6 +1,6 @@
 {
   "experiment": {
-    "N": 50,
+    "N": 70,
     "steps": 6387,
     "alpha": 0.1,
     "dt": 1.0,
@@ -12,7 +12,7 @@
     "bandwidth": 70.0,
     "propagation_delay": 0.05,
     "packet_size": 1.0,
-    "bandwidth_logstd": 0.15,
+    "bandwidth_logstd": 0.3,
     "bandwidth_rho": 0.8
   }
 }
