@@ -9,7 +9,7 @@
     "seed": 7
   },
   "latency": {
-    "bandwidth": 10000.0,
+    "bandwidth": 70,
     "propagation_delay": 0.05,
     "packet_size": 1.0
   }

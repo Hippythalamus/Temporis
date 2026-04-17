@@ -232,6 +232,8 @@ Temporis is designed for studying:
 
 - ROS2 integration
 - Zenoh backend support
+  - Adapt queue model to Zenoh-specific topology (peer / client+router / mesh)
+  - Validate against real Zenoh latency measurements
 - Phase transition detection tools
 
 ---

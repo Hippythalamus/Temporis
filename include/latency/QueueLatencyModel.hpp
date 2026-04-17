@@ -4,24 +4,32 @@
 #include <LatencyModel.hpp>
 
 /**
- * QueueLatencyModel — mechanistic latency model based on per-link M/D/1 queues.
- *
- * Step 1 of the queue-based model implementation. Implements the minimal
- * configuration described in docs/queue_model.md:
- *   - sender-side queue placement (one queue per directed link)
- *   - constant bandwidth (no bandwidth_logstd, no bandwidth_rho)
- *   - no service noise (service_noise_logstd = 0)
- *   - unbounded queue capacity (no drops)
- *
- * Each directed link (i, j) is treated as an independent M/D/1 queue:
- *   - service time is deterministic: packet_size / bandwidth
- *   - arrivals come from agent i's send schedule
- *   - the queue is fully described by a single scalar `t_complete` per link
- *     (the time at which the queue will next be free), so no deque is needed
- *
- * The model assumes full all-to-all connectivity. Sparse topologies are
- * out of scope for this version; the caller (NetworkSimulator) is
- * responsible for not invoking compute_delay on non-existent links.
+ * QueueLatencyModel — mechanistic latency model based on shared sender-side
+* M/D/1 queues.
+*
+* Step 1 of the queue-based model implementation. Implements the minimal
+* configuration described in docs/queue_model.md:
+*   - shared sender-side queue placement (one queue per sender, used for
+*     all outgoing destinations)
+*   - constant bandwidth (no bandwidth_logstd, no bandwidth_rho)
+*   - no service noise (service_noise_logstd = 0)
+*   - unbounded queue capacity (no drops)
+*
+* Each sender i is treated as an M/D/1 queue:
+*   - all messages from i, regardless of destination, go through the same queue
+*   - service time is deterministic: packet_size / bandwidth
+*   - the queue is fully described by a single scalar `t_complete` per sender
+*     (the time at which the queue will next be free), so no deque is needed
+*
+* This shared-sender placement is appropriate for senders that have one
+* effective upstream channel (a robot's WiFi radio, a process's DDS write
+* path + OS socket buffer, etc.). For Zenoh-specific topologies (peer mode
+* per-link, client+router, mesh) see docs/queue_model.md §11 and the
+* planned Etap 4 work; this version is intentionally generic.
+*
+* The receiver argument is accepted by compute_delay() for interface
+* compatibility with LatencyModel::sample, but is not used by queue
+* dynamics — only the sender's queue is tracked.
  *
  * Tie-breaking on simultaneous arrivals
  * --------------------------------------
@@ -64,7 +72,6 @@
  * `t_arrival`), not as the queue's internal physical time.
  */
 
-constexpr double TIE_BREAK_EPS = 1e-12; 
 
 class QueueLatencyModel : public LatencyModel{
 public:
@@ -99,12 +106,13 @@ public:
      *          to obtain the delivery time, and the value that should
      *          appear in latency.csv as the `delay` column.
      *
-     * Side effect: updates the internal t_complete for link (sender, receiver).
+     * Side effect: updates the internal t_complete for sender's queue.
+     * The receiver argument does not affect queue state.
      */
     double compute_delay(int sender, int receiver, double t_arrival);
 
     /**
-     * Reset all link states to t_complete = 0.
+     * Reset all sender queue states to t_complete = 0.
      *
      * Intended for starting a fresh experiment. Not designed for
      * mid-simulation reset (where you might want t_complete = current_time
@@ -119,16 +127,15 @@ private:
     // orders of magnitude below any physical latency scale.
     static constexpr double TIE_BREAK_EPS = 1e-9;
 
-    struct LinkState {
-        double t_complete = 0.0;  // time at which this link's queue is next free
+    struct SenderState {
+        double t_complete = 0.0;  // time at which this sender's queue is next free
     };
 
-    // Dense [num_agents][num_agents] storage. Wastes memory on the diagonal
-    // and on any unused links, but the constant factor is small (one double
-    // per link). Sparse topologies are out of scope; if needed in the future,
-    // this can be replaced with an unordered_map<pair<int,int>, LinkState>
-    // without changing the public API.
-    std::vector<std::vector<LinkState>> links_;
+    // One queue per sender. All outgoing messages from sender i, regardless
+    // of destination, share the same queue and compete for the same
+    // serialization bandwidth. This models a single shared upstream channel
+    // (robot's radio, DDS write path, etc.).
+    std::vector<SenderState> senders_;
 
     double service_time_;       // = packet_size / bandwidth, precomputed
     double propagation_delay_;
