@@ -17,6 +17,7 @@ public:
         CORRELATED,          // log-normal AR(1), single regime -- validated baseline
         REGIME_CORRELATED,    // Markov-switching log-normal AR(1), per-link state
         QUEUE,
+        ZENOH_QUEUE
     };
 
     RegimeLatencyModel(Mode mode, const LatencyParams& latency, uint64_t seed = 2);

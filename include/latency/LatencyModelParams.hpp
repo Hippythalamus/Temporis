@@ -44,4 +44,11 @@ public:
     double propagation_delay = 0.0;  // for QUEUE model only
     double bandwidth_logstd = 0.0;
     double bandwidth_rho = 0.0;
+
+    //Zenoh
+    double client_bandwidth = 1000.0;
+    double propagation_client_router = 0.001;
+    double propagation_router_subscriber = 0.001;
+    double router_base_cost = 0.000005;
+    double router_per_sub_cost = 0.000002;
 };

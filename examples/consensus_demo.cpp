@@ -3,6 +3,7 @@
 #include <QueueLatencyModel.hpp>
 #include <NetworkSimulator.hpp>
 #include <ExperimentParams.hpp>
+#include <ZenohQueueModel.hpp>
 #include <Agent.hpp>
 #include <Message.hpp>
 #include <random>
@@ -72,6 +73,22 @@ make_latency_model(const ExperimentConfig& config) {
             config.seed      
         };
         return std::make_unique<QueueLatencyModel>(qc);
+    }
+
+    if (config.mode == RegimeLatencyModel::Mode::ZENOH_QUEUE) {
+        ZenohQueueModel::Config zc{
+            config.latency.client_bandwidth,
+            config.latency.packet_size,
+            config.latency.propagation_client_router,
+            config.latency.propagation_router_subscriber,
+            config.latency.router_base_cost,
+            config.latency.router_per_sub_cost,
+            config.N,
+            config.latency.bandwidth_logstd,
+            config.latency.bandwidth_rho,
+            config.seed
+        };
+        return std::make_unique<ZenohQueueModel>(zc);
     }
     return std::make_unique<RegimeLatencyModel>(
         config.mode, config.latency, config.seed);

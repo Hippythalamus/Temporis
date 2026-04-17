@@ -22,6 +22,7 @@ add_library(temporis
     src/NetworkSimulator.cpp
     src/Random.cpp
     src/ExperimentParams.cpp
+    src/ZenohQueueModel.cpp
 )
 
 target_include_directories(temporis

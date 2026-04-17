@@ -37,6 +37,7 @@ Temporis lets you test:
 - same mean latency → different system dynamics
 - short noise vs long bursts
 - effect of temporal correlation on convergence
+- effect of middleware topology on scaling
 
 ---
 
@@ -45,17 +46,10 @@ Temporis lets you test:
 ### Latency models
 
 - IID models (Gaussian, Exponential)
-- Log-normal AR(1) (**CORRELATED**)
-  - calibrated to match real latency distributions
-  - preserves positivity without clamping
-- Regime-switching latency (**REGIME / REGIME_CORRELATED**)
-  - models congestion as a persistent state
-  - produces realistic burst structure
-- Queue-based congestion (**QUEUE**)
-  - shared sender-side queue with bandwidth AR(1) noise
-  - latency arises from message competition for a finite channel
-  - creates a feedback loop: more agents → longer queues → higher latency
-  - validated against batch-arrival analytical formula (0.00% error)
+- Log-normal AR(1) (**CORRELATED**) — calibrated to match real latency distributions, preserves positivity without clamping
+- Regime-switching latency (**REGIME / REGIME_CORRELATED**) — models congestion as a persistent state, produces realistic burst structure
+- Queue-based congestion (**QUEUE**) — shared sender-side queue with bandwidth AR(1) noise, validated against batch-arrival formula (0.00% error)
+- Zenoh client+router topology (**ZENOH_QUEUE**) — two-stage queue (client egress → router forwarding → subscriber), router processes all messages from all clients (O(N²) work)
 
 ### Validation and calibration
 
@@ -71,24 +65,31 @@ Temporis lets you test:
 
 - `LatencyModel` — abstract base for all latency processes
 - `RegimeLatencyModel` — IID, AR(1), and regime-switching implementations
-- `QueueLatencyModel` — mechanistic queue-based implementation
+- `QueueLatencyModel` — mechanistic shared-sender queue
+- `ZenohQueueModel` — two-stage client+router queue
 - `NetworkSimulator` — delayed message delivery
 - `Agent` — distributed consensus algorithm
 - `ExperimentLogger` — CSV output for system, network, and latency traces
 
 ---
 
-## Key result: queue feedback loop
+## Key result: topology determines stability
 
-With identical channel parameters (bandwidth=70, noise σ=0.3, ρ=0.8) and algorithm (alpha=0.1, all-to-all consensus):
+Same algorithm (alpha=0.1, all-to-all consensus), same channel parameters (bandwidth=70, noise σ=0.3, ρ=0.8), two different middleware topologies:
 
-| Agents | Queue load (ρ) | Mean latency | Convergence step |
-|--------|---------------|-------------|-----------------|
-| 10     | 0.13          | 0.13 sec    | 160             |
-| 50     | 0.70          | 0.60 sec    | 182             |
-| 70     | 0.99          | 112 sec     | 836             |
+| Agents | QUEUE mean | ZENOH mean | QUEUE conv. step | ZENOH conv. step |
+|--------|-----------|-----------|-----------------|-----------------|
+| 10     | 0.13 sec  | 0.22 sec  | 161             | 162             |
+| 50     | 0.60 sec  | 3.84 sec  | 182             | 402             |
+| 70     | 112 sec   | 206 sec   | 836             | **does not converge** |
 
-Adding 20 agents (50 → 70) slowed convergence **5x** — not because the algorithm degraded, but because the network saturated. This effect is invisible in latency models where delay is independent of load.
+At N=70, peer-to-peer topology (QUEUE) converges in 836 steps. Client+router topology (ZENOH_QUEUE) **does not converge** within 6387 steps — final variance is 0.087, twenty-six orders of magnitude worse.
+
+The only difference is the router. It creates an O(N²) bottleneck: every published message must be forwarded to N-1 subscribers sequentially. At N=70, the router processes 4830 messages per step at ~203 μs each — nearly 1 second of work per 1-second step, pushing the system into saturation.
+
+The ZENOH_QUEUE model captures the qualitative topology of Zenoh client+router deployments (single shared router, sequential per-subscriber forwarding) but uses approximate processing costs. The specific saturation thresholds shown above will differ from real Zenoh deployments, where batching, parallelism, and protocol-level optimizations may raise or lower the critical N. Validation against real Zenoh router traces is planned.
+
+This effect is invisible in any latency model where delay is independent of load or topology.
 
 ---
 
@@ -132,61 +133,43 @@ The fastest way to see Temporis in action is to run the bundled `consensus_demo`
 ./build/consensus_demo config/config.json
 ```
 
-This runs a multi-agent consensus experiment under the latency model specified in `config/config.json`. Results land in `results/run_<timestamp>/`, containing at least `latency.csv` (per-message delays) and `system.csv` (consensus state over time).
+Results land in `results/run_<timestamp>/`, containing `latency.csv` (per-message delays) and `system.csv` (consensus state over time).
 
-**2. Analyse the latency trace.** Point `analyze_latency.py` at the freshly-written CSV:
+**2. Analyse the latency trace.**
 
 ```bash
 python3 analyze_latency.py results/run_<timestamp>/latency.csv out_run/
 ```
 
-This produces `out_run/fit.json` with population statistics, per-link statistics, an AR(1) fit (both linear and log-normal variants), ACF, and burst statistics. Diagnostic plots are written to the same directory.
+Produces `out_run/fit.json` with population and per-link statistics, AR(1) fit, ACF, and burst statistics.
 
-**3. Generate a quality report.** Compare the fitted parameters back against the trace they came from to check the model is consistent:
+**3. Generate a quality report.**
 
 ```bash
 python3 temporis_report.py out_run/fit.json --mode correlated --output out_run/report.md
 ```
 
-For a regime-switching run, use `--mode regime` and pass the same `config.json` you ran the simulation with:
+For regime-switching: `--mode regime --regime-config config/config.json`
 
-```bash
-python3 temporis_report.py out_run/fit.json --mode regime \
-    --regime-config config/config.json --output out_run/report_regime.md
-```
-
-For a queue-based run, use `--mode queue`:
-
-```bash
-python3 temporis_report.py out_run/fit.json --mode queue \
-    --regime-config config/config_queue.json --output out_run/report_queue.md
-```
-
-The report includes round-trip parameter recovery (CORRELATED only), marginal/burst/ACF comparison (REGIME), batch-arrival analytical check (QUEUE), and an explicit verdict section.
+For queue-based: `--mode queue --regime-config config/config_queue.json`
 
 ---
 
 ## Calibrating against real data (Path B: fit, configure, validate)
 
-This is the workflow used for the validation paper: take a real public dataset, fit a stochastic model to it, plug the fitted parameters into `config.json`, run Temporis with those parameters, and verify that the simulator reproduces the source statistics.
-
-**1. Get the data.** The Seattle dataset is publicly available at https://github.com/uofa-rzhu3/NetLatency-Data. Clone or download it, then convert it to Temporis CSV format with the bundled parser:
+**1. Get the data.** The Seattle dataset is publicly available at https://github.com/uofa-rzhu3/NetLatency-Data.
 
 ```bash
 python3 parse_seattle.py /path/to/SeattleData/ results/seattle/data_real.csv
 ```
 
-The parser reads matrix-per-file Seattle format and emits a canonical `t, sender, receiver, delay` CSV. If you want to use a different dataset, write a similar parser — the only contract is that the output CSV has those four columns.
-
-**2. Fit a log-normal AR(1) to the real trace.**
+**2. Fit a log-normal AR(1).**
 
 ```bash
 python3 analyze_latency.py results/seattle/data_real.csv out_seattle/
 ```
 
-The output `out_seattle/fit.json` contains the per-link AR(1) fit under `per_link.ar1_fit_log` — specifically `base_delay`, `rho`, and `innovation_std`. Copy these three numbers into the `latency` block of `config/config.json` to use them in a CORRELATED simulation.
-
-**3. (Optional) Search for regime-switching parameters.** A single-regime AR(1) cannot reproduce long burst episodes seen in real traces. To fit a Markov-switching variant, run a Bayesian optimization search:
+**3. (Optional) Search for regime-switching parameters.**
 
 ```bash
 python3 fit_regime_bayesian.py out_seattle/fit.json \
@@ -195,26 +178,13 @@ python3 fit_regime_bayesian.py out_seattle/fit.json \
     --save-config out_seattle/best_regime.json
 ```
 
-Or a simpler grid search:
-
-```bash
-python3 fit_regime_correlated.py out_seattle/fit.json
-```
-
-**4. Run Temporis with the calibrated parameters.**
+**4. Run and validate.**
 
 ```bash
 ./build/consensus_demo config/config.json
-```
-
-**5. Validate the simulator against the real source.**
-
-```bash
 python3 temporis_report.py out_seattle/fit.json --mode regime \
     --regime-config config/config.json --output out_seattle/report.md
 ```
-
-The verdict section will tell you whether the calibration succeeded — and crucially, it will warn you if the regime model overshoots long-range autocorrelation, which is a known limitation of Markov-switching log-AR(1) and the topic of ongoing work.
 
 ---
 
@@ -227,19 +197,6 @@ The verdict section will tell you whether the calibration succeeded — and cruc
 | `fit_regime_correlated.py` | target `fit.json` | regime config (printed) | Grid search for Markov-switching parameters |
 | `fit_regime_bayesian.py` | target `fit.json` + CSV | regime config (saved) | Bayesian optimization with configurable loss (v1/v2/v3) |
 | `temporis_report.py` | `fit.json` + mode + config | `report.md` + plots | Quality report with analytical checks and verdicts |
-
-All scripts have `--help`. None depend on running C++ — they operate on CSVs and JSON.
-
----
-
-## Research directions
-
-Temporis is designed for studying:
-
-- latency-induced instability in multi-agent systems
-- interaction between communication and control
-- robustness of consensus under realistic delays
-- scaling effects: how adding agents changes network dynamics
 
 ---
 
@@ -256,13 +213,13 @@ Temporis is designed for studying:
 - Bayesian regime calibration with Pareto frontier analysis
 - Queue-based congestion model with bandwidth AR(1) noise
 - Queue feedback loop experiment (N=10/50/70 convergence comparison)
+- Zenoh client+router queue model (two-stage, O(N²) router bottleneck)
+- Topology comparison experiment (QUEUE vs ZENOH_QUEUE stability)
 
 ### Planned
 
 - ROS2 integration
-- Zenoh backend support:
-  - Adapt queue model to Zenoh-specific topology (peer / client+router / mesh)
-  - Validate against real Zenoh latency measurements
+- Zenoh validation against real router traces
 - Phase transition detection tools
 - Hybrid models (queue + regime-switching)
 

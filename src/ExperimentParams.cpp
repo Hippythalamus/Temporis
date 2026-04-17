@@ -16,6 +16,7 @@ RegimeLatencyModel::Mode parse_mode(const std::string& s) {
     if (s == "CORRELATED") return RegimeLatencyModel::Mode::CORRELATED;
     if (s == "REGIME_CORRELATED") return RegimeLatencyModel::Mode::REGIME_CORRELATED;
     if (s == "QUEUE") return RegimeLatencyModel::Mode::QUEUE;
+    if (s == "ZENOH_QUEUE") return RegimeLatencyModel::Mode::ZENOH_QUEUE;
 
     throw std::runtime_error("Unknown mode: " + s);
 }
@@ -73,6 +74,13 @@ ExperimentConfig load_config(const std::string& path) {
     config.latency.bandwidth_logstd = jl.value("bandwidth_logstd", 0.0);
     config.latency.bandwidth_rho = jl.value("bandwidth_rho", 0.0);
     config.latency.propagation_delay = jl.value("propagation_delay", 0.0);
+
+    //Zenoh
+    config.latency.client_bandwidth = jl.value("client_bandwidth", config.latency.bandwidth);
+    config.latency.propagation_client_router = jl.value("propagation_client_router", 0.001);
+    config.latency.propagation_router_subscriber = jl.value("propagation_router_subscriber", 0.001);
+    config.latency.router_base_cost = jl.value("router_base_cost", 0.000005);
+    config.latency.router_per_sub_cost = jl.value("router_per_sub_cost", 0.000002);
     return config;
 }
 
@@ -96,6 +104,7 @@ void print_config(const ExperimentConfig& config) {
         case RegimeLatencyModel::Mode::CORRELATED: std::cout << "CORRELATED\n"; break;
         case RegimeLatencyModel::Mode::REGIME_CORRELATED: std::cout << "REGIME_CORRELATED\n"; break;
         case RegimeLatencyModel::Mode::QUEUE: std::cout << "QUEUE\n"; break;
+        case RegimeLatencyModel::Mode::ZENOH_QUEUE: std::cout << "ZENOH_QUEUE\n"; break;
     }
 
     std::cout << "--- Latency params ---\n";

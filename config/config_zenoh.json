@@ -1,0 +1,21 @@
+{
+  "experiment": {
+    "N": 70,
+    "steps": 6387,
+    "alpha": 0.1,
+    "dt": 1.0,
+    "mode": "ZENOH_QUEUE",
+    "validation_check": false,
+    "seed": 7
+  },
+  "latency": {
+    "client_bandwidth": 70.0,
+    "packet_size": 1.0,
+    "propagation_client_router": 0.025,
+    "propagation_router_subscriber": 0.025,
+    "router_base_cost": 0.000005,
+    "router_per_sub_cost": 0.000002,
+    "bandwidth_logstd": 0.3,
+    "bandwidth_rho": 0.8
+  }
+}
