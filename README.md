@@ -49,7 +49,7 @@ Temporis lets you test:
 - Log-normal AR(1) (**CORRELATED**) — calibrated to match real latency distributions, preserves positivity without clamping
 - Regime-switching latency (**REGIME / REGIME_CORRELATED**) — models congestion as a persistent state, produces realistic burst structure
 - Queue-based congestion (**QUEUE**) — shared sender-side queue with bandwidth AR(1) noise, validated against batch-arrival formula (0.00% error)
-- Zenoh client+router topology (**ZENOH_QUEUE**) — two-stage queue (client egress → router forwarding → subscriber), router processes all messages from all clients (O(N²) work)
+- Zenoh client+router topology (**ZENOH_QUEUE**) — two-stage queue (client egress → router forwarding → subscriber), calibrated against real Zenoh all-to-all benchmark (router_base_cost=108μs, router_per_sub_cost=2.7μs)
 
 ### Validation and calibration
 
@@ -58,6 +58,7 @@ Temporis lets you test:
 - Temporal metrics (ACF, burst statistics)
 - Bayesian optimization for regime calibration (optuna)
 - Automated quality reports with explicit verdicts
+- Real Zenoh benchmark (fan-out + all-to-all) for router parameter extraction
 
 ---
 
@@ -73,23 +74,22 @@ Temporis lets you test:
 
 ---
 
-## Key result: topology determines stability
+## Key result: Zenoh router saturation threshold
 
-Same algorithm (alpha=0.1, all-to-all consensus), same channel parameters (bandwidth=70, noise σ=0.3, ρ=0.8), two different middleware topologies:
+ZenohQueueModel calibrated against a real Zenoh all-to-all benchmark (router_base_cost=108μs, router_per_sub_cost=2.7μs, formula error < 1%):
 
-| Agents | QUEUE mean | ZENOH mean | QUEUE conv. step | ZENOH conv. step |
-|--------|-----------|-----------|-----------------|-----------------|
-| 10     | 0.13 sec  | 0.22 sec  | 161             | 162             |
-| 50     | 0.60 sec  | 3.84 sec  | 182             | 402             |
-| 70     | 112 sec   | 206 sec   | 836             | **does not converge** |
+| Agents | Mean latency | Router load (ρ) | Convergence |
+|--------|-------------|-----------------|-------------|
+| 10     | 16 ms       | 0.01            | 160 steps   |
+| 50     | 339 ms      | 0.59            | 174 steps   |
+| 60     | 525 ms      | 0.95            | 175 steps   |
+| 70     | 1347 sec    | 1.42            | **does not converge** |
 
-At N=70, peer-to-peer topology (QUEUE) converges in 836 steps. Client+router topology (ZENOH_QUEUE) **does not converge** within 6387 steps — final variance is 0.087, twenty-six orders of magnitude worse.
+Single-router Zenoh topology supports all-to-all consensus up to **~65 agents**. Beyond that, the router saturates: every published message must be forwarded to N-1 subscribers, creating O(N²) total work per step. At N=70, the router needs 1.42 seconds of processing per 1-second step — latency grows without bound and consensus diverges.
 
-The only difference is the router. It creates an O(N²) bottleneck: every published message must be forwarded to N-1 subscribers sequentially. At N=70, the router processes 4830 messages per step at ~203 μs each — nearly 1 second of work per 1-second step, pushing the system into saturation.
+For comparison, peer-to-peer topology (no router) sustains convergence up to N≈70 in the model but breaks in practice at N≈50 due to discovery storm (each peer must discover N-1 others via gossip).
 
-The ZENOH_QUEUE model captures the qualitative topology of Zenoh client+router deployments (single shared router, sequential per-subscriber forwarding) but uses approximate processing costs. The specific saturation thresholds shown above will differ from real Zenoh deployments, where batching, parallelism, and protocol-level optimizations may raise or lower the critical N. Validation against real Zenoh router traces is planned.
-
-This effect is invisible in any latency model where delay is independent of load or topology.
+Neither topology scales indefinitely for all-to-all communication. For large N, sparse communication patterns (ring, grid, random neighbors) or multi-router mesh deployments are necessary.
 
 ---
 
@@ -212,14 +212,16 @@ python3 temporis_report.py out_seattle/fit.json --mode regime \
 - Quality report tool with explicit verdicts
 - Bayesian regime calibration with Pareto frontier analysis
 - Queue-based congestion model with bandwidth AR(1) noise
-- Queue feedback loop experiment (N=10/50/70 convergence comparison)
+- Queue feedback loop experiment (N scaling comparison)
 - Zenoh client+router queue model (two-stage, O(N²) router bottleneck)
-- Topology comparison experiment (QUEUE vs ZENOH_QUEUE stability)
+- Zenoh calibration from real all-to-all benchmark (108μs base, 2.7μs/sub)
+- Saturation threshold: N≈65 for single-router all-to-all consensus
 
 ### Planned
 
-- ROS2 integration
-- Zenoh validation against real router traces
+- Sparse communication topologies (ring, grid, random neighbors)
+- Multi-router mesh topology
+- ROS2 integration (Temporis as ROS2 node)
 - Phase transition detection tools
 - Hybrid models (queue + regime-switching)
 
