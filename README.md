@@ -74,23 +74,91 @@ Temporis lets you test:
 
 ---
 
-## Key result: Zenoh router saturation threshold
+## Key results
 
-ZenohQueueModel calibrated against a real Zenoh all-to-all benchmark (router_base_cost=108μs, router_per_sub_cost=2.7μs, formula error < 1%):
+### Regime-switching: Pareto frontier (Etap 2)
 
-| Agents | Mean latency | Router load (ρ) | Convergence |
-|--------|-------------|-----------------|-------------|
-| 10     | 16 ms       | 0.01            | 160 steps   |
-| 50     | 339 ms      | 0.59            | 174 steps   |
-| 60     | 525 ms      | 0.95            | 175 steps   |
-| 70     | 1347 sec    | 1.42            | **does not converge** |
+Two-regime Markov-switching log-AR(1) cannot simultaneously match
+marginal distribution, burst structure, and short-range ACF of Seattle
+traces. Three calibration strategies (grid search baseline, Bayesian
+optimization weighted toward ACF, and weighted toward burst length)
+map three points on a trade-off surface:
 
-Single-router Zenoh topology supports all-to-all consensus up to **~65 agents**. Beyond that, the router saturates: every published message must be forwarded to N-1 subscribers, creating O(N²) total work per step. At N=70, the router needs 1.42 seconds of processing per 1-second step — latency grows without bound and consensus diverges.
+| Metric      | Seattle | Baseline | Optuna v2 (ACF) | Optuna v3 (burst) |
+|-------------|---------|----------|-----------------|-------------------|
+| std error   |    —    | +19%     | -33%            | -4%               |
+| ACF lag 1   | 0.815   | ~0.96    | 0.799           | 0.940             |
+| burst mean  | 5.83    | +33%     | -42%            | -31%              |
 
-For comparison, peer-to-peer topology (no router) sustains convergence up to N≈70 in the model but breaks in practice at N≈50 due to discovery storm (each peer must discover N-1 others via gossip).
+**Conclusion.** This is a structural limitation of the two-regime
+Markov-switching model class, not a calibration failure. Optimizing
+for ACF breaks burst statistics and vice versa — no weighting escapes
+the trade-off. This motivates mechanistic (queue-based) models that
+generate temporal structure from physical dynamics rather than fitting
+it from abstract parameters.
 
-Neither topology scales indefinitely for all-to-all communication. For large N, sparse communication patterns (ring, grid, random neighbors) or multi-router mesh deployments are necessary.
+### Queue feedback loop (Etap 3)
 
+With queue-based latency (shared sender, bandwidth AR(1) noise),
+adding agents increases message load, which increases queueing delay,
+which degrades consensus convergence. This feedback loop is absent
+in all phenomenological models (IID, CORRELATED, REGIME) where delay
+is independent of the number of communicating agents:
+
+| Agents | Mean latency | Convergence step |
+|--------|-------------|-----------------|
+| 10     | 0.13 sec    | 161             |
+| 50     | 0.60 sec    | 182             |
+| 70     | 112 sec     | 836             |
+
+**Conclusion.** Adding 20 agents (50 → 70) slowed convergence 5x —
+not because the consensus algorithm degraded, but because the sender's
+outgoing queue saturated. This is the first experiment in Temporis where
+system behavior depends on the number of agents through network dynamics,
+not through algorithm structure. Any simulation that ignores load-dependent
+latency will miss this effect entirely.
+
+### Topology determines stability (Etap 4)
+
+Same algorithm (alpha=0.1, all-to-all), same channel parameters
+(bandwidth=70, noise σ=0.3, ρ=0.8), two different middleware topologies
+— peer-to-peer (QUEUE) and client+router (ZENOH_QUEUE):
+
+| Agents | QUEUE mean | ZENOH mean | QUEUE conv. | ZENOH conv. |
+|--------|-----------|-----------|-------------|-------------|
+| 10     | 0.13 sec  | 0.22 sec  | 161         | 162         |
+| 50     | 0.60 sec  | 3.84 sec  | 182         | 402         |
+| 70     | 112 sec   | 206 sec   | 836         | **does not converge** |
+
+**Conclusion.** At N=70, peer-to-peer converges in 836 steps while
+client+router does not converge at all (final variance 0.087). The only
+difference is the router, which creates an O(N²) bottleneck: every
+published message must be forwarded to N-1 subscribers. Same algorithm,
+same bandwidth — different middleware topology produces a qualitatively
+different outcome. This effect is invisible in any latency model where
+delay is independent of topology.
+
+### Calibrated Zenoh saturation threshold (Etap 4)
+
+ZenohQueueModel calibrated from a real Zenoh all-to-all benchmark
+(router_base_cost=108μs, router_per_sub_cost=2.7μs, linear fit error <1%):
+
+| Agents | Mean latency | Router ρ | Convergence |
+|--------|-------------|----------|-------------|
+| 10     | 16 ms       | 0.01     | 160 steps   |
+| 50     | 339 ms      | 0.59     | 174 steps   |
+| 60     | 525 ms      | 0.95     | 175 steps   |
+| 70     | 1347 sec    | 1.42     | **does not converge** |
+
+**Conclusion.** Single-router Zenoh topology supports all-to-all
+consensus up to approximately 65 agents. Beyond this threshold, the
+router's processing time exceeds the simulation step (ρ > 1), latency
+grows without bound, and consensus diverges. In practice, peer-to-peer
+Zenoh breaks even earlier — at N≈50 — due to discovery storm (each
+peer must find N-1 others via gossip). Neither standard Zenoh topology
+scales indefinitely for all-to-all communication; large deployments
+require either sparse communication patterns (ring, grid, random
+neighbors) or multi-router mesh architectures.
 ---
 
 ## Dependencies
